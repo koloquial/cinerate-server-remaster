@@ -7,6 +7,7 @@ const md5 = require('md5');
 
 app.use(cors());
 
+
 const server = http.createServer(app);
 
 const io = new Server(server, {
@@ -18,6 +19,11 @@ const io = new Server(server, {
 
 const online = {};
 const rooms = {};
+
+app.get('/', function (req, res) {
+    console.log(req.get('Content-Type'));
+    res.end();
+});
 
 function calculateWinner(guesses, target){
     // Initialize variables to track the closest guess and its difference
@@ -47,6 +53,8 @@ function calculateWinner(guesses, target){
 }
 
 io.on('connection', (socket) => {
+    console.log('user connected');
+
     //add user socket id to online{}
     online[socket.id] = {
         id: socket.id,
