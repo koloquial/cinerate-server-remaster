@@ -19,7 +19,7 @@ const online = {};
 const rooms = {};
 
 app.get('/', function (req, res) {
-    res.send('root')
+    res.redirect('https://cinerate.onrender.com');
 });
 
 function calculateWinner(guesses, target){
