@@ -5,6 +5,7 @@ const { Server } = require('socket.io');
 const md5 = require('md5');
 
 const app = express();
+app.use(cors());
 const server = http.createServer(app);
 
 const io = new Server(server, {
@@ -18,8 +19,7 @@ const online = {};
 const rooms = {};
 
 app.get('/', function (req, res) {
-    console.log(req.get('Content-Type'));
-    res.end();
+    res.send('root')
 });
 
 function calculateWinner(guesses, target){
