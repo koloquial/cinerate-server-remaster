@@ -3,10 +3,13 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const md5 = require('md5');
+require('dotenv').config()
 
 const app = express();
 app.use(cors());
 const server = http.createServer(app);
+
+let quotes = null;
 
 const io = new Server(server, {
     cors: {
@@ -15,44 +18,62 @@ const io = new Server(server, {
     }
 });
 
+function getQuotes(){
+    const url = 'https://famous-quotes4.p.rapidapi.com/random?category=movies&count=5';
+    const options = {
+        method: 'GET',
+        headers: {
+            'x-rapidapi-key': process.env.QUOTES_API,
+            'x-rapidapi-host': 'famous-quotes4.p.rapidapi.com'
+        }
+    };
+
+    try {
+        fetch(url, options)
+        .then(response => response.json())
+        .then(response => quotes = response)
+        .catch(error => console.error(error));
+    } catch (error) {
+        console.error(error);
+    }
+}
+
 const online = {};
 const rooms = {};
+getQuotes();
 
 app.get('/', function (req, res) {
     res.redirect('https://cinerate.onrender.com');
 });
 
 function calculateWinner(guesses, target){
-    // Initialize variables to track the closest guess and its difference
     let closestGuesses = [];
     let minDifference = Infinity;
 
-    // Iterate through each guess
+    // iterate through each guess
     guesses.forEach(guess => {
-        // Calculate the difference between the guess and the target
+        // calculate the difference between the guess and the target
         let difference = parseFloat(target) - parseFloat(guess.vote);
 
-        // Check if the guess is not over the target and is closer than the current closest
+        // check if the guess is not over the target and is closer than the current closest
         if (difference >= 0 && difference < minDifference) {
-            // Update the minimum difference
+            // update the minimum difference
             minDifference = difference;
 
-            // Reset the closest guesses array with the current guess
+            // reset the closest guesses array with the current guess
             closestGuesses = [guess];
         } else if (difference >= 0 && difference === minDifference) {
-            // If there's a tie in difference, add this guess to the closest guesses array
+            // if there's a tie in difference, add this guess to the closest guesses array
             closestGuesses.push(guess);
         }
     });
 
-    // Return the array of closest guesses
+    // return the array of closest guesses
     return closestGuesses;
 }
 
 io.on('connection', (socket) => {
-    console.log('user connected');
-
-    //add user socket id to online{}
+    // add user socket id to online{}
     online[socket.id] = {
         id: socket.id,
         name: socket.id.substring(0, 5), 
@@ -76,6 +97,12 @@ io.on('connection', (socket) => {
 
         //send notification
         io.to(id).emit('notification', {message: 'Name updated.'});
+    })
+
+    //update quotes
+    socket.on('get_quote', ({ room }) => {
+        //send random movie quote
+        io.in(room).emit('update_quote', {quote: quotes[Math.floor(Math.random() * quotes.length)]});
     })
 
     //client creates room
@@ -122,7 +149,6 @@ io.on('connection', (socket) => {
 
     //client join a room
     socket.on('join_room', ({ id, room, password}) => {
-        
         //check if room valid length
         if(room.length !== 32){
             //invalid room
@@ -132,144 +158,145 @@ io.on('connection', (socket) => {
             return;
         }
         
-        //check if room exists
+        // check if room exists
         if(rooms[room]){
-            //room exists
-            //check if game is active
+            // room exists
+            // check if game is active
             if(!rooms[room].active){
-                //check if room has a password
+                // check if room has a password
                 if(rooms[room].password === password){
-                    //password matches
+                    // password matches
                     socket.join(room);
 
-                    //push player into room           
+                    // push player into room           
                     rooms[room].players.push(online[id]);
 
+                    //  reset player score
                     online[id].score = 0;
 
-                    //update room
+                    // update room
                     io.in(room).emit('update_room', rooms[room]);
 
-                    //update stage
+                    // update stage
                     io.to(id).emit('update_stage', {stage: 'await-players'});
 
-                    //update notifcation
+                    // update notifcation
                     io.to(id).emit('notification', {message: 'Joined room.'});
                 }else{
-                    //password does not match
+                    // password does not match
                     io.to(id).emit('notification', {
                         message: 'Invalid password.'
                     }); 
                 }
             }else{
-                //room already active
+                // room already active
                 io.to(id).emit('notification', {
                     message: 'Game already started.'
                 }); 
             }
 
         }else{
-            //room doesn't exist
+            // room doesn't exist
             io.to(id).emit('notification', {
                 message: 'Invalid room.'
             });
         }
     })
 
-    //update user name
+    // leave room
     socket.on('leave_room', ({ id, room }) => {
-       //remove id from room
+       // remove id from room
        for(let i = 0; i < room.players.length; i++){
         if(room.players[i].id === id){
             room.players.splice(i, 1);
         }
        }
 
-       //check if room is empty
+       // check if room is empty
        if(room.players.length === 0){
-        //disband room
+        // disband room
         delete rooms[room.id];
 
        }else{
-            //assign new host
+            // assign new host
             room.host = room.players[0];
 
-            //update rooms{}
+            // update rooms{}
             rooms[room.id] = room;
 
-            //send room notification
+            // send room notification
             io.in(room.id).emit('notification', {
                 message: `New host assigned: ${room.players[0].name}`
             });
         }
 
-        //update stage for user that left
+        // update stage for user that left
         io.to(id).emit('update_stage', {stage: 'splash'});
 
-       //update room
+       // update room
        io.in(room.id).emit('update_room', rooms[room.id]);
 
-       //update homepage open rooms
+       // update homepage open rooms
        io.emit('update_public_rooms', rooms);
        
-       //send user notification
+       // send user notification
        io.to(id).emit('notification', {
             message: 'Left room.'
         });
     });
 
-    //start game
+    // start game
     socket.on('start_game', ({ id }) => {
-        //activate game
+        // activate game
         rooms[id].active = true;
 
-        //assign random dealer
+        // assign random dealer
         let random = Math.floor(Math.random() * rooms[id].players.length);
         rooms[id].dealer = rooms[id].players[random];
         
-         //update room
+         // update room
          io.in(id).emit('update_room', rooms[id]);
          
-         //update stage
+         // update stage
          io.in(id).emit('update_stage', {stage: 'assign-movie'});
          
-         //update notifcation
+         // update notifcation
          io.in(id).emit('notification', {message: 'Game started.'});
     });
 
-    //movie selected
+    // movie selected
     socket.on('movie_selected', ({ room, movie }) => {
-       //assign critMovie
+       // assign critMovie
        rooms[room].critMovie = movie;
 
-       //push into movies[]
+       // push into movies[]
        rooms[room].movies.push(movie);
 
-       //update room
+       // update room
        io.in(room).emit('update_room', rooms[room]);
 
-       //update stage
+       // update stage
        io.in(room).emit('update_stage', {stage: 'cast-vote'});
        
-       //update notifcation
+       // update notifcation
        io.in(room).emit('notification', {message: 'Movie selected. Cast Vote.'});
     });
 
-    //cast vote
+    // cast vote
     socket.on('cast_vote', ({ id, room, vote}) => {
-        //push user guess into guesses[]
+        // push user guess into guesses[]
         rooms[room].guesses.push({ user: online[id], vote });
 
-        //check if all guesses are cast
+        // check if all guesses are cast
         if(rooms[room].guesses.length === rooms[room].players.length){
 
-            //calculate winner
+            // calculate winner
             const winners = calculateWinner(rooms[room].guesses, rooms[room].critMovie.imdbRating);
 
-            //update rooms[room]
+            // update rooms[room]
             rooms[room].winners = winners;
             
-            //update player scores
+            // update player scores
             if(winners[0] !== null){
                 for(let i = 0; i < winners.length; i++){
                     for(let j = 0; j < rooms[room].players.length; j++){
@@ -280,69 +307,69 @@ io.on('connection', (socket) => {
                 }
             }
 
-            //update room
+            // update room
             io.in(room).emit('update_room', rooms[room]);
 
-            //update stage
+            // update stage
             io.in(room).emit('update_stage', {stage: 'round-over'});
 
-            //update notifcation
+            // update notifcation
             io.in(room).emit('notification', {message: 'Round over.'});
         }else{
-            //update notifcation (private)
+            // update notifcation (private)
             socket.to(id).emit('notification', {message: 'Vote cast.'});
         }
     });
 
-        //next round
+        // next round
         socket.on("next_round", ({ room }) => {
-            //assign random dealer amongst lowest turns
+            // assign random dealer amongst lowest turns
             let low = null;
             let iteration;
 
-            //iterate over players
+            // iterate over players
             for(let i = 0; i < rooms[room].players.length; i++){
-                //get lowest amount of turns
+                // get lowest amount of turns
                 if(!low){
-                    //if low is not set, set it
+                    // if low is not set, set it
                     low = rooms[room].players[i]
                     iteration = i;
                 }else if(low.turns > rooms[room].players[i].turns){
-                    //found new low
+                    // found new low
                     low = rooms[room].players[i];
                     iteration = i;
                 }
             }
-            //increment turn
+            // increment turn
             rooms[room].players[iteration].turns = rooms[room].players[iteration].turns + 1;
     
-            //assign dealer to lowest turns
+            // assign dealer to lowest turns
             rooms[room].dealer = low;
     
-            //update room variables
+            // update room variables
             rooms[room].winners.splice(0, rooms[room].winners.length);
             rooms[room].guesses.splice(0, rooms[room].guesses.length);
             rooms[room].critMovie = null;
     
-                        //update stage
-                        io.in(room).emit('update_stage', {stage: 'assign-movie'});
+            // update stage
+            io.in(room).emit('update_stage', {stage: 'assign-movie'});
 
-            //update room
+            // update room
             io.in(room).emit('update_room', rooms[room]);
     
-            //update notifcation
+            // update notifcation
             io.in(room).emit('notification', {message: 'Next round.'});
         })
 
-           //re-assign dealer
+           // re-assign dealer
     socket.on("assign_dealer", ({ room }) => {
-        //update stage
+        // update stage
         io.in(room).emit("update_stage", {stage: 'assign-dealer'});
 
-        //update notifcation
+        // update notifcation
         io.in(room).emit("notification", {message: 'Dealer time expired.'});
 
-        //add additional turn to player who forfeitted
+        // add additional turn to player who forfeitted
         for(let i = 0; i < rooms[room].players.length; i++){
             if(rooms[room].dealer.id === rooms[room].players[i].id){
                 rooms[room].players[i].turns = rooms[room].players[i].turns + 1;
@@ -351,74 +378,74 @@ io.on('connection', (socket) => {
         }
         
         setTimeout(() => {
-        //assign random dealer
+        // assign random dealer
         let low = null;
         let iteration;
-        //iterate over players
+        // iterate over players
         for(let i = 0; i < rooms[room].players.length; i++){
-            //get lowest amount of turns
+            // get lowest amount of turns
             if(!low){
-                //if low is not set, set it
+                // if low is not set, set it
                 low = rooms[room].players[i]
                 iteration = i;
             }else if(low.turns > rooms[room].players[i].turns){
-                //found new low
+                // found new low
                 low = rooms[room].players[i];
                 iteration = i;
             }
         }
-        //increment turn
+        // increment turn
         rooms[room].players[iteration].turns = rooms[room].players[iteration].turns + 1;
 
-        //assign dealer to lowest turns
+        // assign dealer to lowest turns
         rooms[room].dealer = low;
             
-                    //update stage
+                    // update stage
                     io.in(room).emit("update_stage", {stage: 'assign-movie'});
 
-            //update room
+            // update room
             io.in(room).emit("update_room", rooms[room]);
 
-            //update notifcation
+            // update notifcation
             io.in(room).emit("notification", {message: 'New dealer.'});
         }, 3000)
     });
 
-        //game over
+        // game over
         socket.on('game_over', ({ room }) => {
-            //update stage
+            // update stage
             io.in(room).emit("update_stage", {stage: 'game-over'});
     
-            //update notifcation
+            // update notifcation
             io.in(room).emit("notification", {message: 'Game over.'});
 
-            //remove game
+            // remove game
             delete rooms[room];
         })
 
-    //send message
+    // send message
     socket.on('send_message', ({ id, name, message }) => {
-        //push message into room.chat[]
+        // push message into room.chat[]
         rooms[id].chat.push({name, message});
 
-        //remove old messages
+        // remove old messages
         if(rooms[id].chat.length > 10){
             rooms[id].chat.shift();
         }
 
-        //update room        
+        // update room        
         io.in(id).emit('update_room', rooms[id]);
     });
 
 
-    //disconnect
+    // disconnect
     socket.on('disconnect', () => {
-        //remove user from online users
+        // remove user from online users
         delete online[socket.id];
 
-        //remove user from any active games
+        // remove user from any active games
 
-        //check if user is a host
+        // check if user is a host
     });
 });
 
