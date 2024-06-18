@@ -19,7 +19,7 @@ const io = new Server(server, {
 });
 
 function getQuotes(){
-    const url = 'https://famous-quotes4.p.rapidapi.com/random?category=movies&count=5';
+    const url = 'https://famous-quotes4.p.rapidapi.com/random?category=movies&count=50';
     const options = {
         method: 'GET',
         headers: {
