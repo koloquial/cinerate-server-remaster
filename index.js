@@ -88,12 +88,18 @@ io.on('connection', (socket) => {
     io.to(socket.id).emit('update_public_rooms', rooms);
 
     //update user name
-    socket.on('update_name', ({ id, name }) => {
+    socket.on('update_name', ({ id, name, room }) => {
         //update name
         online[id].name = name;
 
         //send user socket info
-        io.to(id).emit('entry', online[id]);
+        // io.to(id).emit('entry', online[id]);
+
+        //update room
+        io.in(room.id).emit('update_room', rooms[room.id]);
+
+        //update homepage open rooms
+        io.emit('update_public_rooms', rooms);
 
         //send notification
         io.to(id).emit('notification', {message: 'Name updated.'});
@@ -361,9 +367,10 @@ io.on('connection', (socket) => {
             io.in(room).emit('notification', {message: 'Next round.'});
         })
 
-           // re-assign dealer
-    socket.on("assign_dealer", ({ room }) => {
-        // update stage
+        // re-assign dealer
+        socket.on("assign_dealer", ({ room }) => {
+        
+            // update stage
         io.in(room).emit("update_stage", {stage: 'assign-dealer'});
 
         // update notifcation
@@ -400,8 +407,8 @@ io.on('connection', (socket) => {
         // assign dealer to lowest turns
         rooms[room].dealer = low;
             
-                    // update stage
-                    io.in(room).emit("update_stage", {stage: 'assign-movie'});
+            // update stage
+            io.in(room).emit("update_stage", {stage: 'assign-movie'});
 
             // update room
             io.in(room).emit("update_room", rooms[room]);
@@ -421,6 +428,9 @@ io.on('connection', (socket) => {
 
             // remove game
             delete rooms[room];
+
+            //update homepage open rooms
+            io.emit('update_public_rooms', rooms);
         })
 
     // send message
@@ -435,6 +445,9 @@ io.on('connection', (socket) => {
 
         // update room        
         io.in(id).emit('update_room', rooms[id]);
+
+        // update room chat notification       
+        io.in(id).emit('update_room_chat_notification', rooms[id]);
     });
 
 
