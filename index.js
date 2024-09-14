@@ -93,7 +93,7 @@ io.on('connection', (socket) => {
         online[id].name = name;
 
         //send user socket info
-        // io.to(id).emit('entry', online[id]);
+        io.to(id).emit('entry', online[id]);
 
         //update room
         io.in(room.id).emit('update_room', rooms[room.id]);
