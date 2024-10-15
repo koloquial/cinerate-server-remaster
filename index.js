@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const md5 = require('md5');
+
 require('dotenv').config()
 
 const app = express();
@@ -10,6 +11,8 @@ app.use(cors());
 const server = http.createServer(app);
 
 let quotes = null;
+const online = {};
+const rooms = {};
 
 const io = new Server(server, {
     cors: {
@@ -38,14 +41,6 @@ function getQuotes(){
     }
 }
 
-const online = {};
-const rooms = {};
-getQuotes();
-
-app.get('/', function (req, res) {
-    res.redirect('https://cinerate.onrender.com');
-});
-
 function calculateWinner(guesses, target){
     let closestGuesses = [];
     let minDifference = Infinity;
@@ -72,14 +67,25 @@ function calculateWinner(guesses, target){
     return closestGuesses;
 }
 
+
+getQuotes();
+
+app.get('/', function (req, res) {
+    res.redirect('https://cinerate.onrender.com');
+});
+
 io.on('connection', (socket) => {
     // add user socket id to online{}
     online[socket.id] = {
         id: socket.id,
         name: socket.id.substring(0, 5), 
         score: 0,
-        turns: 0
+        turns: 0,
+        moviesPlayed: []
     }
+
+    //send online users
+    io.emit('users_online', online);
 
     //send user socket info on connection
     io.to(socket.id).emit('entry', online[socket.id]);
@@ -289,9 +295,10 @@ io.on('connection', (socket) => {
     });
 
     // cast vote
-    socket.on('cast_vote', ({ id, room, vote}) => {
+    socket.on('cast_vote', ({ id, room, vote, movie}) => {
         // push user guess into guesses[]
         rooms[room].guesses.push({ user: online[id], vote });
+        online[id].moviesPlayed.push(movie);
 
         // check if all guesses are cast
         if(rooms[room].guesses.length === rooms[room].players.length){
@@ -312,6 +319,9 @@ io.on('connection', (socket) => {
                     }
                 }
             }
+
+            //update entry
+            io.to(socket.id).emit('entry', online[socket.id]);
 
             // update room
             io.in(room).emit('update_room', rooms[room]);
