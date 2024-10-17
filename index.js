@@ -93,16 +93,13 @@ io.on('connection', (socket) => {
     //update homepage open rooms
     io.to(socket.id).emit('update_public_rooms', rooms);
 
-    //update user name
-    socket.on('update_name', ({ id, name, room }) => {
+    //update player name
+    socket.on('update_name', ({ id, name }) => {
         //update name
         online[id].name = name;
 
         //send user socket info
         io.to(id).emit('entry', online[id]);
-
-        //update room
-        io.in(room.id).emit('update_room', rooms[room.id]);
 
         //update homepage open rooms
         io.emit('update_public_rooms', rooms);
